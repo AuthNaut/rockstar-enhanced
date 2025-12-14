@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>User Activity Lookup - Rockstar</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            color: #667eea;
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 0.95em;
+        }
+
+        .search-section {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #555;
+        }
+
+        input[type="text"],
+        input[type="date"] {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 1em;
+            transition: border-color 0.3s;
+        }
+
+        input[type="text"]:focus,
+        input[type="date"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .date-range {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            font-size: 1em;
+            font-weight: 600;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            width: 100%;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .results-section {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            display: none;
+        }
+
+        .results-section.visible {
+            display: block;
+        }
+
+        .status-message {
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+
+        .status-message.loading {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .status-message.error {
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        .status-message.success {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .activity-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            font-size: 0.9em;
+            overflow-x: auto;
+            display: block;
+        }
+
+        .activity-table thead,
+        .activity-table tbody,
+        .activity-table tr {
+            display: table;
+            width: 100%;
+            table-layout: fixed;
+        }
+
+        .activity-table th {
+            background: #667eea;
+            color: white;
+            padding: 12px 8px;
+            text-align: left;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .activity-table td {
+            padding: 12px 8px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .activity-table tr:hover {
+            background: #f5f5f5;
+        }
+
+        .activity-table tbody {
+            display: block;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .event-type {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+
+        .event-type.success {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .event-type.failure {
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        .event-type.info {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .pagination {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid #e0e0e0;
+        }
+
+        .pagination button {
+            width: auto;
+            padding: 10px 20px;
+        }
+
+        .result-count {
+            color: #666;
+            font-weight: 600;
+        }
+
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(5px);
+        }
+
+        .modal.active {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .modal-content {
+            background: white;
+            padding: 0;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 900px;
+            max-height: 90vh;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideUp 0.3s ease-out;
+            display: flex;
+            flex-direction: column;
+        }
+
+        @keyframes slideUp {
+            from { transform: translateY(50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .modal-header {
+            padding: 20px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 12px 12px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            font-size: 1.5em;
+        }
+
+        .modal-close {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            font-size: 1.5em;
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .modal-close:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .modal-body {
+            padding: 30px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .modal-footer {
+            padding: 15px 30px;
+            background: #f5f5f5;
+            border-radius: 0 0 12px 12px;
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+        }
+
+        .modal-footer button {
+            padding: 10px 20px;
+            width: auto;
+        }
+
+        .debug-section {
+            margin-bottom: 20px;
+        }
+
+        .debug-section h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .debug-data {
+            background: #f8f8f8;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85em;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .debug-data pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .action-icon {
+            cursor: pointer;
+            color: #667eea;
+            margin-left: 10px;
+            font-size: 1.1em;
+            transition: color 0.2s;
+        }
+
+        .action-icon:hover {
+            color: #764ba2;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            transition: transform 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+        }
+
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+        }
+
+        .stat-label {
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎸 User Activity Lookup</h1>
+            <p class="subtitle">Search Okta System Log for user activities</p>
+        </header>
+
+        <div class="search-section">
+            <form id="searchForm">
+                <div class="form-group">
+                    <label for="userIdentifier">User Identifier (username, email, or user ID)</label>
+                    <input type="text" id="userIdentifier" placeholder="e.g., john.doe@example.com" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Date Range</label>
+                    <div class="date-range">
+                        <div>
+                            <input type="date" id="startDate" required>
+                            <small style="color: #666;">Start Date</small>
+                        </div>
+                        <div>
+                            <input type="date" id="endDate" required>
+                            <small style="color: #666;">End Date</small>
+                        </div>
+                    </div>
+                </div>
+
+                <button type="submit" id="searchButton">Search Activity</button>
+            </form>
+        </div>
+
+        <div class="results-section" id="resultsSection">
+            <div id="statusMessage"></div>
+            <div id="resultsContainer"></div>
+        </div>
+    </div>
+
+    <!-- Debug Modal -->
+    <div id="debugModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Event Details</h2>
+                <button class="modal-close" id="closeDebugModal">&times;</button>
+            </div>
+            <div class="modal-body" id="debugModalBody">
+                <!-- Debug content will be inserted here -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn-secondary" id="copyDebugData">Copy JSON</button>
+                <button type="button" id="closeDebugModalBtn">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="user-activity.js"></script>
+</body>
+</html>
