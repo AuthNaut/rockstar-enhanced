@@ -1928,10 +1928,11 @@
 
             try {
                 // Try to get devices with expand parameter for more details
-                let devices = await getJSON(`/api/v1/users/${userId}/devices?expand=device`);
-                
-                // Fallback to basic endpoint if expand fails
-                if (!devices || devices.error) {
+                let devices;
+                try {
+                    devices = await getJSON(`/api/v1/users/${userId}/devices?expand=device`);
+                } catch (expandError) {
+                    // Fallback to basic endpoint if expand parameter is not supported
                     devices = await getJSON(`/api/v1/users/${userId}/devices`);
                 }
 
@@ -1965,9 +1966,6 @@
                     // Data is nested under item.device or item itself
                     const device = item.device || item;
                     const profile = device.profile || {};
-                    
-                    // Debug: Log the full item structure to understand API response
-                    console.log('Full device item:', item);
 
                     // Device name
                     const displayName = profile.displayName || profile.name || device.resourceDisplayName?.value || 'Unknown Device';
