@@ -19,6 +19,8 @@ The extension adds enhanced functionality to Okta's administrative interface, en
 - **Security Engineers**: Teams responsible for monitoring and securing Okta environments
 - **Identity Architects**: Professionals designing and implementing identity solutions
 
+**Note**: This extension requires access to Okta admin domains (okta.com, okta-emea.com, oktapreview.com, okta-gov.com, okta.mil). Users should understand that the extension can read and modify data on these domains, though it operates entirely client-side and does not transmit data externally.
+
 ## 🏗️ Technical Architecture
 
 ### Extension Type
@@ -238,7 +240,7 @@ Alternatively, install from Chrome Web Store (original version).
 
 ## 🔮 Future Enhancements (from README)
 
-1. **jQuery Upgrade** - Update from 1.12.4 to 3.7.1 (security)
+1. **jQuery Upgrade** - Update from 1.12.4 to latest stable version (security - note: README mentions 3.7.1, but verify latest version)
 2. **Enhanced Sign-On Policy Display** - Show full policy rules and conditions
 
 ## 🐛 Bug Fixes Included
@@ -247,9 +249,9 @@ Alternatively, install from Chrome Web Store (original version).
 
 ## 📊 Code Statistics
 
-- **Total JavaScript Lines**: ~6,313 lines
-- **Main Extension Logic**: ~3,333 lines (rockstar.js)
-- **User Activity Feature**: ~1,372 lines (user-activity.js)
+- **Total JavaScript Lines**: 6,290 lines
+- **Main Extension Logic**: 3,333 lines (rockstar.js)
+- **User Activity Feature**: 1,372 lines (user-activity.js)
 - **Languages**: JavaScript, HTML, CSS
 - **Files**: 17 total files in repository
 
