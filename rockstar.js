@@ -2352,6 +2352,7 @@
         if (location.pathname == "/admin/users") {
             // see also Reports > Reports, Okta Password Health: https://ORG-admin.oktapreview.com/api/v1/users?format=csv
             createDiv("Export Users", mainPopup, () => exportUsers("Users", "/api/v1/users", true));
+            createDiv("Export Users by Email List", mainPopup, exportUsersByEmailList);
         } else if (location.pathname.match("/admin/groups")) {
             createDiv("Export Groups", mainPopup, function () {
                 startExport("Groups", "/api/v1/groups", "id,name,description,type",
@@ -2510,6 +2511,221 @@
             //         "<a href='/admin/apps/active'>Applications > Applications</a> to export Apps<br>" +
             //         "<a href='/admin/access/networks'>Security > Networks</a><br>");
         }
+        function exportUsersByEmailList() {
+            const emailListPopup = createPopup("Export Users by Email List");
+            emailListPopup.html(`
+                <div style='padding: 10px;'>
+                    <p>Enter user emails (one per line or comma-separated):</p>
+                    <textarea id='emailListInput' rows='10' style='width: 100%; font-family: monospace; padding: 8px; border: 1px solid #ccc;' 
+                        placeholder='user1@example.com&#10;user2@example.com&#10;user3@example.com'></textarea>
+                    <p style='font-size: 0.9em; color: #666;'>
+                        You can paste emails from CSV, one per line, or comma-separated.<br>
+                        Example: user1@example.com, user2@example.com, user3@example.com
+                    </p>
+                    <div id='emailError' style='color: #c62828; margin: 10px 0;'></div>
+                    <button id='fetchUsersBtn' style='padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer;'>
+                        Continue to Column Selection
+                    </button>
+                </div>
+            `);
+            
+            $('#fetchUsersBtn').click(async function () {
+                const emailInput = $('#emailListInput').val().trim();
+                if (!emailInput) {
+                    $('#emailError').html('Please enter at least one email address.');
+                    return;
+                }
+                
+                // Parse emails from input (handle both newlines and commas)
+                const emails = emailInput
+                    .split(/[\n,]+/)
+                    .map(e => e.trim())
+                    .filter(e => e.length > 0);
+                
+                if (emails.length === 0) {
+                    $('#emailError').html('No valid email addresses found.');
+                    return;
+                }
+                
+                // Show progress
+                emailListPopup.html(`
+                    <div style='padding: 20px; text-align: center;'>
+                        <div class="spinner"></div>
+                        <p>Fetching users... 0 of ${emails.length}</p>
+                        <div id='fetchProgress'></div>
+                    </div>
+                `);
+                
+                // Fetch users by email
+                const users = [];
+                const notFound = [];
+                let processed = 0;
+                
+                for (const email of emails) {
+                    try {
+                        // Use filter to find user by email - capture jqXHR for rate limit headers
+                        const result = await new Promise((resolve, reject) => {
+                            $.get({ 
+                                url: location.origin + `/api/v1/users?filter=profile.email eq "${email}"`, 
+                                headers 
+                            }).done(function(data, textStatus, jqXHR) {
+                                // Check rate limit
+                                const remaining = jqXHR.getResponseHeader("X-Rate-Limit-Remaining");
+                                const reset = jqXHR.getResponseHeader("X-Rate-Limit-Reset");
+                                
+                                if (remaining && remaining < 10) {
+                                    const resetTime = new Date(reset * 1000);
+                                    const waitTime = resetTime - new Date();
+                                    emailListPopup.find('p').html(`Rate limit approaching (${remaining} remaining). Sleeping until ${resetTime.toLocaleTimeString()}...`);
+                                    
+                                    setTimeout(() => {
+                                        resolve(data);
+                                    }, waitTime);
+                                } else {
+                                    resolve(data);
+                                }
+                            }).fail(reject);
+                        });
+                        
+                        if (result && result.length > 0) {
+                            users.push(result[0]);
+                        } else {
+                            notFound.push(email);
+                        }
+                    } catch (error) {
+                        notFound.push(email);
+                    }
+                    processed++;
+                    emailListPopup.find('p').html(`Fetching users... ${processed} of ${emails.length}`);
+                }
+                
+                // Show results
+                if (users.length === 0) {
+                    emailListPopup.html(`
+                        <div style='padding: 20px; color: #c62828;'>
+                            <p>No users found.</p>
+                            <p>Emails not found: ${notFound.join(', ')}</p>
+                        </div>
+                    `);
+                    return;
+                }
+                
+                // Store users for export and show column selection
+                window.rockstarEmailListUsers = users;
+                
+                let summaryHtml = `
+                    <div style='padding: 10px; margin-bottom: 15px; background: #f5f5f5; border-radius: 4px;'>
+                        <strong>Found ${users.length} user(s) out of ${emails.length} email(s)</strong>
+                `;
+                if (notFound.length > 0) {
+                    summaryHtml += `<br><span style='color: #c62828;'>Not found (${notFound.length}): ${notFound.slice(0, 5).join(', ')}${notFound.length > 5 ? '...' : ''}</span>`;
+                }
+                summaryHtml += `</div>`;
+                
+                // Now show the column selection UI
+                exportUsersByEmailListColumns(users, summaryHtml);
+            });
+        }
+        
+        function exportUsersByEmailListColumns(users, summaryHtml) {
+            exportPopup = createPopup("Export Users by Email List");
+            exportPopup.html(summaryHtml);
+            exportPopup.append("<br>Columns to export");
+            var errorBox = $('<div style="background-color: #ffb;"></div>').appendTo(exportPopup);
+            var checkboxDiv = $("<div style='overflow-y: scroll; height: 152px; width: 500px; border: 1px solid #ccc;'></div>").appendTo(exportPopup);
+
+            function addCheckbox(value, text) {
+                const checked = exportColumns.includes(value) ? "checked" : "";
+                checkboxDiv.html(checkboxDiv.html() + `<label><input type=checkbox value='${e(value)}' ${checked}>${e(text)}</label><br>`);
+            }
+            const user = {
+                id: "User Id",
+                status: "Status",
+                created: "Created Date",
+                activated: "Activated Date",
+                statusChanged: "Status Changed Date",
+                lastLogin: "Last Login Date",
+                lastUpdated: "Last Updated Date",
+                passwordChanged: "Password Changed Date",
+                transitioningToStatus: "Transitioning to Status",
+                'type.id': 'User Type ID',
+                'credentials.recovery_question.question': 'Credential Recovery Question',
+                "credentials.provider.type": "Credential Provider Type",
+                "credentials.provider.name": "Credential Provider Name"
+            };
+            const defaultColumns = "id,status,profile.login,profile.firstName,profile.lastName,profile.email";
+            const exportColumns = (localStorage.rockstarExportUserColumns || defaultColumns).replace(/ /g, "").split(",");
+            for (const p in user) addCheckbox(p, user[p]);
+            getJSON("/api/v1/meta/schemas/user/default").then(schema => {
+                const base = schema.definitions.base.properties;
+                const custom = schema.definitions.custom.properties;
+                for (const p in base) addCheckbox("profile." + p, base[p].title);
+                for (const p in custom) addCheckbox("profile." + p, custom[p].title);
+            }).fail(() => {
+                const profile = {
+                    login: "Username",
+                    firstName: "First name",
+                    lastName: "Last name",
+                    middleName: "Middle name",
+                    honorificPrefix: "Honorific prefix",
+                    honorificSuffix: "Honorific suffix",
+                    email: "Primary email",
+                    title: "Title",
+                    displayName: "Display name",
+                    nickName: "Nickname",
+                    profileUrl: "Profile Url",
+                    secondEmail: "Secondary email",
+                    mobilePhone: "Mobile phone",
+                    primaryPhone: "Primary phone",
+                    streetAddress: "Street address",
+                    city: "City",
+                    state: "State",
+                    zipCode: "Zip code",
+                    countryCode: "Country code",
+                    postalAddress: "Postal Address",
+                    preferredLanguage: "Preferred language",
+                    locale: "Locale",
+                    timezone: "Time zone",
+                    userType: "User type",
+                    employeeNumber: "Employee number",
+                    costCenter: "Cost center",
+                    organization: "Organization",
+                    division: "Division",
+                    department: "Department",
+                    managerId: "Manager Id",
+                    manager: "Manager"
+                };
+                for (const p in profile) addCheckbox("profile." + p, profile[p]);
+                errorBox.html('Unable to fetch custom attributes. Use an account with more privileges.<br>Only base attributes shown below.');
+            });
+
+            exportPopup.append(`<br><br><div id=error>&nbsp;</div><br>`);
+            createDivA("Export", exportPopup, function () {
+                var exportHeaders = [];
+                var exportCols = [];
+                checkboxDiv.find("input:checked").each(function () {
+                    exportHeaders.push(this.parentNode.textContent);
+                    exportCols.push(this.value);
+                });
+                if (exportHeaders.length) {
+                    $("#error").html("&nbsp;");
+                    exportHeaders = exportHeaders.join(",");
+                    localStorage.rockstarExportUserColumns = exportCols.join(",");
+                    
+                    // Export the users we already fetched
+                    exportPopup.html("Generating CSV...");
+                    const lines = [];
+                    users.forEach(user => {
+                        const line = toCSV(...fields(user, exportCols));
+                        lines.push(line + '\n');
+                    });
+                    downloadCSV(exportPopup, `${users.length} user(s) exported. `, exportHeaders, lines, 'Export Users by Email List');
+                } else {
+                    $("#error").html("ERROR: Select at least 1 column.");
+                }
+            });
+        }
+        
         function exportUsers(o, url, filter) {
             exportPopup = createPopup("Export " + o);
             exportPopup.append("<br>Columns to export");
