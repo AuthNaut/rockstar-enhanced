@@ -1962,7 +1962,7 @@
                             <tbody>
                 `;
 
-                devices.forEach(item => {
+                for (const item of devices) {
                     // Data is nested under item.device or item itself
                     const device = item.device || item;
                     const profile = device.profile || {};
@@ -1984,39 +1984,32 @@
                     const created = device.created ? new Date(device.created).toLocaleDateString() : '-';
                     const lastUpdated = device.lastUpdated ? new Date(device.lastUpdated).toLocaleDateString() : '-';
 
-                    // These fields may be in profile, device, or item level, or nested in other properties
-                    // Check all possible locations for management status
-                    let mgmtStatus = profile.managementStatus || device.managementStatus || item.managementStatus;
-                    if (!mgmtStatus && profile.managed !== undefined) {
-                        mgmtStatus = profile.managed;
-                    }
-                    if (!mgmtStatus && device.managed !== undefined) {
-                        mgmtStatus = device.managed;
-                    }
-                    if (!mgmtStatus && profile.securityInfo) {
-                        mgmtStatus = profile.securityInfo.managementStatus;
-                    }
-                    if (!mgmtStatus) {
-                        mgmtStatus = '-';
+                    // Get managed status and screen lock from device users endpoint
+                    let mgmtStatus = '-';
+                    let screenLock = '-';
+                    
+                    try {
+                        const deviceUsers = await getJSON(`/api/v1/devices/${device.id}/users`);
+                        // Find the current user in the device users list
+                        const currentUserDevice = deviceUsers.find(du => du.user?.id === userId);
+                        
+                        if (currentUserDevice) {
+                            // Check for management status (string: "MANAGED", "NOT_MANAGED", etc.)
+                            if (currentUserDevice.managementStatus) {
+                                mgmtStatus = currentUserDevice.managementStatus;
+                            }
+                            
+                            // Check for screen lock type
+                            if (currentUserDevice.screenLockType) {
+                                screenLock = currentUserDevice.screenLockType;
+                            }
+                        }
+                    } catch (error) {
+                        // If we can't get device users, keep defaults
                     }
                     
-                    const mgmtColor = (mgmtStatus === 'MANAGED' || mgmtStatus === true) ? '#2e7d32' : '#666';
-                    const mgmtDisplay = mgmtStatus === true ? 'MANAGED' : (mgmtStatus === false ? 'NOT MANAGED' : mgmtStatus);
-
-                    // Check all possible locations for screen lock type
-                    let screenLock = profile.screenLockType || device.screenLockType || item.screenLockType;
-                    if (!screenLock && profile.screenLock) {
-                        screenLock = profile.screenLock.type || profile.screenLock;
-                    }
-                    if (!screenLock && device.screenLock) {
-                        screenLock = device.screenLock.type || device.screenLock;
-                    }
-                    if (!screenLock && profile.securityInfo) {
-                        screenLock = profile.securityInfo.screenLockType;
-                    }
-                    if (!screenLock) {
-                        screenLock = '-';
-                    }
+                    const mgmtColor = mgmtStatus === 'MANAGED' ? '#2e7d32' : '#666';
+                    const mgmtDisplay = mgmtStatus;
                     
                     const screenLockIcon = screenLock === 'BIOMETRIC' ? '🔐' : screenLock === 'PASSCODE' ? '🔢' : screenLock === 'NONE' ? '⚠️' : '';
 
@@ -2031,7 +2024,7 @@
                             <td style='padding: 8px;'>${screenLockIcon} ${e(screenLock)}</td>
                         </tr>
                     `;
-                });
+                }
 
                 tableHTML += `
                             </tbody>
