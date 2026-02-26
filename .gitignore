@@ -1,0 +1,25 @@
+# Development/Testing files
+.claude/
+logs01.json
+syslog_query.csv
+z_OLD_rockstar.js
+mobile.md
+
+# Documentation files (keep only README.md)
+AUTO_POPULATE_FEATURE.md
+IMPLEMENTATION_SUMMARY.md
+LOCATION_DATA_ANALYSIS.md
+LOCATION_FIX.md
+POPUP_INTEGRATION_SUMMARY.md
+TESTING_CHECKLIST.md
+USER_ACTIVITY_INTEGRATION.md
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
