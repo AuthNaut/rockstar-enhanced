@@ -1927,7 +1927,14 @@
             devicesPopup.html('<div style="padding: 20px; text-align: center;"><div class="spinner"></div> Loading devices...</div>');
 
             try {
-                const devices = await getJSON(`/api/v1/users/${userId}/devices`);
+                // Try to get devices with expand parameter for more details
+                let devices;
+                try {
+                    devices = await getJSON(`/api/v1/users/${userId}/devices?expand=device`);
+                } catch (expandError) {
+                    // Fallback to basic endpoint if expand parameter is not supported
+                    devices = await getJSON(`/api/v1/users/${userId}/devices`);
+                }
 
                 if (!devices || devices.length === 0) {
                     devicesPopup.html('<div style="padding: 20px; text-align: center; color: #666;">No devices found for this user.</div>');
@@ -1937,6 +1944,9 @@
                 let tableHTML = `
                     <div style='padding: 10px; max-height: 500px; overflow-y: auto;'>
                         <div style='margin-bottom: 10px; color: #667eea; font-weight: 600;'>${devices.length} device${devices.length !== 1 ? 's' : ''} found</div>
+                        <div style='margin-bottom: 10px; color: #666; font-size: 0.85em;'>
+                            <i>Note: Management status and Screen Lock data may not be available for all devices depending on API permissions and device enrollment type.</i>
+                        </div>
                         <table class='data-list-table' style='border: 1px solid #ddd; width: 100%; font-size: 0.85em;'>
                             <thead>
                                 <tr style='background: #667eea; color: white;'>
@@ -1953,7 +1963,7 @@
                 `;
 
                 devices.forEach(item => {
-                    // Data is nested under item.device
+                    // Data is nested under item.device or item itself
                     const device = item.device || item;
                     const profile = device.profile || {};
 
@@ -1974,11 +1984,40 @@
                     const created = device.created ? new Date(device.created).toLocaleDateString() : '-';
                     const lastUpdated = device.lastUpdated ? new Date(device.lastUpdated).toLocaleDateString() : '-';
 
-                    // These fields may not be in the basic response
-                    const mgmtStatus = device.managementStatus || item.managementStatus || '-';
-                    const mgmtColor = mgmtStatus === 'MANAGED' ? '#2e7d32' : '#666';
+                    // These fields may be in profile, device, or item level, or nested in other properties
+                    // Check all possible locations for management status
+                    let mgmtStatus = profile.managementStatus || device.managementStatus || item.managementStatus;
+                    if (!mgmtStatus && profile.managed !== undefined) {
+                        mgmtStatus = profile.managed;
+                    }
+                    if (!mgmtStatus && device.managed !== undefined) {
+                        mgmtStatus = device.managed;
+                    }
+                    if (!mgmtStatus && profile.securityInfo) {
+                        mgmtStatus = profile.securityInfo.managementStatus;
+                    }
+                    if (!mgmtStatus) {
+                        mgmtStatus = '-';
+                    }
+                    
+                    const mgmtColor = (mgmtStatus === 'MANAGED' || mgmtStatus === true) ? '#2e7d32' : '#666';
+                    const mgmtDisplay = mgmtStatus === true ? 'MANAGED' : (mgmtStatus === false ? 'NOT MANAGED' : mgmtStatus);
 
-                    const screenLock = device.screenLockType || item.screenLockType || '-';
+                    // Check all possible locations for screen lock type
+                    let screenLock = profile.screenLockType || device.screenLockType || item.screenLockType;
+                    if (!screenLock && profile.screenLock) {
+                        screenLock = profile.screenLock.type || profile.screenLock;
+                    }
+                    if (!screenLock && device.screenLock) {
+                        screenLock = device.screenLock.type || device.screenLock;
+                    }
+                    if (!screenLock && profile.securityInfo) {
+                        screenLock = profile.securityInfo.screenLockType;
+                    }
+                    if (!screenLock) {
+                        screenLock = '-';
+                    }
+                    
                     const screenLockIcon = screenLock === 'BIOMETRIC' ? '🔐' : screenLock === 'PASSCODE' ? '🔢' : screenLock === 'NONE' ? '⚠️' : '';
 
                     tableHTML += `
@@ -1988,7 +2027,7 @@
                             <td style='padding: 8px;'><span style='color: ${statusColor}; font-weight: 600;'>${e(status)}</span></td>
                             <td style='padding: 8px;'>${e(created)}</td>
                             <td style='padding: 8px;'>${e(lastUpdated)}</td>
-                            <td style='padding: 8px;'><span style='color: ${mgmtColor};'>${e(mgmtStatus)}</span></td>
+                            <td style='padding: 8px;'><span style='color: ${mgmtColor};'>${e(mgmtDisplay)}</span></td>
                             <td style='padding: 8px;'>${screenLockIcon} ${e(screenLock)}</td>
                         </tr>
                     `;
