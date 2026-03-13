@@ -3349,7 +3349,8 @@
             // Results area
             var results = form.appendChild(document.createElement("div"));
 
-            form.onsubmit = async function () {
+            form.onsubmit = async function (event) {
+                event.preventDefault();
                 var urlTemplate = form.querySelector('#bulkUrl').value.trim();
                 if (!urlTemplate) {
                     $(results).html("<br><span style='color: #c62828'>Enter a URL template.</span>");
