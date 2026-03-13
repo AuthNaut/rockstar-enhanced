@@ -193,6 +193,7 @@
         }
 
         apiExplorer();
+        bulkApiRunner();
     } else if (location.pathname == "/app/UserHome") { // User home page (non-admin)
         mainPopup = createPopup("rockstar", true);
         quickUpdate();
@@ -2352,7 +2353,7 @@
         if (location.pathname == "/admin/users") {
             // see also Reports > Reports, Okta Password Health: https://ORG-admin.oktapreview.com/api/v1/users?format=csv
             createDiv("Export Users", mainPopup, () => exportUsers("Users", "/api/v1/users", true));
-            createDiv("Export Users by Email List", mainPopup, exportUsersByEmailList);
+            createDiv("Export Users by Login List", mainPopup, exportUsersByEmailList);
         } else if (location.pathname.match("/admin/groups")) {
             createDiv("Export Groups", mainPopup, function () {
                 startExport("Groups", "/api/v1/groups", "id,name,description,type",
@@ -2512,14 +2513,14 @@
             //         "<a href='/admin/access/networks'>Security > Networks</a><br>");
         }
         function exportUsersByEmailList() {
-            const emailListPopup = createPopup("Export Users by Email List");
+            const emailListPopup = createPopup("Export Users by Login List");
             emailListPopup.html(`
                 <div style='padding: 10px;'>
-                    <p>Enter user emails (one per line or comma-separated):</p>
-                    <textarea id='emailListInput' rows='10' style='width: 100%; font-family: monospace; padding: 8px; border: 1px solid #ccc;' 
+                    <p>Enter user logins (one per line or comma-separated):</p>
+                    <textarea id='emailListInput' rows='10' style='width: 100%; font-family: monospace; padding: 8px; border: 1px solid #ccc;'
                         placeholder='user1@example.com&#10;user2@example.com&#10;user3@example.com'></textarea>
                     <p style='font-size: 0.9em; color: #666;'>
-                        You can paste emails from CSV, one per line, or comma-separated.<br>
+                        You can paste logins from CSV, one per line, or comma-separated.<br>
                         Example: user1@example.com, user2@example.com, user3@example.com
                     </p>
                     <div id='emailError' style='color: #c62828; margin: 10px 0;'></div>
@@ -2566,7 +2567,7 @@
                         // Use filter to find user by email - capture jqXHR for rate limit headers
                         const result = await new Promise((resolve, reject) => {
                             $.get({ 
-                                url: location.origin + `/api/v1/users?filter=profile.email eq "${email}"`, 
+                                url: location.origin + `/api/v1/users?filter=profile.login eq "${email}"`,
                                 headers 
                             }).done(function(data, textStatus, jqXHR) {
                                 // Check rate limit
@@ -2628,7 +2629,7 @@
         }
         
         function exportUsersByEmailListColumns(users, summaryHtml) {
-            exportPopup = createPopup("Export Users by Email List");
+            exportPopup = createPopup("Export Users by Login List");
             exportPopup.html(summaryHtml);
             exportPopup.append("<br>Columns to export");
             var errorBox = $('<div style="background-color: #ffb;"></div>').appendTo(exportPopup);
@@ -2719,7 +2720,7 @@
                         const line = toCSV(...fields(user, exportCols));
                         lines.push(line + '\n');
                     });
-                    downloadCSV(exportPopup, `${users.length} user(s) exported. `, exportHeaders, lines, 'Export Users by Email List');
+                    downloadCSV(exportPopup, `${users.length} user(s) exported. `, exportHeaders, lines, 'Export Users by Login List');
                 } else {
                     $("#error").html("ERROR: Select at least 1 column.");
                 }
@@ -3037,6 +3038,7 @@
             }
         });
         apiExplorer();
+        bulkApiRunner();
 
         var tinyStyle;
         if (localStorage.rockstarTinyApps) tinyApps();
@@ -3297,6 +3299,236 @@
                     }
                 }).fail(jqXHR => $(results).html("<br>Status: " + jqXHR.status + " " + jqXHR.statusText + "<br><br>Error:<pre>" + e(JSON.stringify(jqXHR.responseJSON, null, 4)) + "</pre>"));
                 return false; // Cancel form submit.
+            };
+        });
+    }
+    function bulkApiRunner() {
+        createDiv("Bulk API Runner", mainPopup, function () {
+            var bulkPopup = createPopup("Bulk API Runner");
+            var form = bulkPopup[0].appendChild(document.createElement("form"));
+
+            // Method selector + URL template
+            form.innerHTML = "<select id=bulkMethod>" +
+                "<option>GET<option>POST<option>PUT<option>PATCH<option>DELETE</select> " +
+                "<input id=bulkUrl style='width: 700px' placeholder='/api/v1/users/$${userId}/factors?activate=true' list=bulkUrls>";
+            var datalist = form.appendChild(document.createElement("datalist"));
+            datalist.id = "bulkUrls";
+            datalist.innerHTML = [
+                '/api/v1/users/${userId}',
+                '/api/v1/users/${userId}/lifecycle/activate',
+                '/api/v1/users/${userId}/lifecycle/deactivate',
+                '/api/v1/users/${userId}/lifecycle/suspend',
+                '/api/v1/users/${userId}/lifecycle/unsuspend',
+                '/api/v1/users/${userId}/lifecycle/reset_password',
+                '/api/v1/users/${userId}/factors',
+                '/api/v1/users/${userId}/groups',
+                '/api/v1/users/${userId}/roles',
+                '/api/v1/users/${userId}/appLinks'
+            ].map(p => `<option>${p}`).join('');
+
+            // Request body
+            form.appendChild(document.createElement("div")).innerHTML = "<br>Request Body (JSON, for POST/PUT/PATCH)";
+            var bodyInput = form.appendChild(document.createElement("textarea"));
+            bodyInput.style.width = "850px";
+            bodyInput.rows = 4;
+
+            // User IDs input
+            form.appendChild(document.createElement("div")).innerHTML = "<br>User IDs (one per line or comma-separated)";
+            var idsInput = form.appendChild(document.createElement("textarea"));
+            idsInput.style.width = "850px";
+            idsInput.rows = 8;
+            idsInput.style.fontFamily = "monospace";
+            idsInput.placeholder = "00u1abc2def3ghi4jkl\n00u5mno6pqr7stu8vwx";
+
+            // Run button
+            form.appendChild(document.createElement("br"));
+            var runBtn = form.appendChild(document.createElement("input"));
+            runBtn.type = "submit";
+            runBtn.value = "Run";
+
+            // Results area
+            var results = form.appendChild(document.createElement("div"));
+
+            form.onsubmit = async function () {
+                var urlTemplate = form.querySelector('#bulkUrl').value.trim();
+                if (!urlTemplate) {
+                    $(results).html("<br><span style='color: #c62828'>Enter a URL template.</span>");
+                    return false;
+                }
+
+                var methodValue = form.querySelector('#bulkMethod').value;
+                var bodyValue = bodyInput.value.trim();
+
+                // Validate JSON body
+                if (bodyValue && ['POST', 'PUT', 'PATCH'].includes(methodValue)) {
+                    try {
+                        JSON.parse(bodyValue);
+                    } catch (err) {
+                        $(results).html("<br><span style='color: #c62828'>Invalid JSON body: " + e(err.message) + "</span>");
+                        return false;
+                    }
+                }
+
+                // Parse user IDs
+                var userIds = idsInput.value
+                    .split(/[\n,]+/)
+                    .map(s => s.trim())
+                    .filter(s => s.length > 0);
+
+                if (userIds.length === 0) {
+                    $(results).html("<br><span style='color: #c62828'>Enter at least one user ID.</span>");
+                    return false;
+                }
+
+                // Confirm for destructive methods
+                if (['DELETE', 'PUT', 'PATCH'].includes(methodValue)) {
+                    if (!confirm(`You are about to run ${methodValue} on ${userIds.length} user(s). Continue?`)) {
+                        return false;
+                    }
+                }
+
+                // Setup progress
+                var cancel = false;
+                $(results).html("<br><p>Processing 0 of " + userIds.length + "...</p>");
+                createDivA("Cancel", results, () => cancel = true);
+
+                var successes = [];
+                var failures = [];
+
+                for (var i = 0; i < userIds.length; i++) {
+                    if (cancel) break;
+
+                    var userId = userIds[i];
+                    var url = urlTemplate.replace(/\$\{userId\}/g, userId);
+
+                    $(results).find('p').first().html(
+                        `Processing ${i + 1} of ${userIds.length}... ` +
+                        `(<span style="color:green">${successes.length} ok</span>, ` +
+                        `<span style="color:red">${failures.length} failed</span>)`
+                    );
+
+                    try {
+                        var result = await new Promise((resolve, reject) => {
+                            var ajaxSettings = {
+                                url: location.origin + url,
+                                method: methodValue,
+                                headers: headers,
+                                contentType: 'application/json'
+                            };
+                            if (bodyValue && ['POST', 'PUT', 'PATCH'].includes(methodValue)) {
+                                ajaxSettings.data = bodyValue;
+                            }
+
+                            $.ajax(ajaxSettings)
+                                .done(function (data, textStatus, jqXHR) {
+                                    var remaining = jqXHR.getResponseHeader("X-Rate-Limit-Remaining");
+                                    var reset = jqXHR.getResponseHeader("X-Rate-Limit-Reset");
+                                    var resultObj = { userId: userId, endpoint: url, status: jqXHR.status, statusText: jqXHR.statusText, success: true, response: data };
+
+                                    if (remaining && parseInt(remaining) < 10) {
+                                        var resetTime = new Date(parseInt(reset) * 1000);
+                                        var waitTime = Math.max(0, resetTime - new Date());
+                                        $(results).find('p').first().html(
+                                            `Rate limit approaching (${remaining} remaining). Sleeping until ${resetTime.toLocaleTimeString()}...`
+                                        );
+                                        setTimeout(() => resolve(resultObj), waitTime);
+                                    } else {
+                                        resolve(resultObj);
+                                    }
+                                })
+                                .fail(function (jqXHR) {
+                                    var remaining = jqXHR.getResponseHeader("X-Rate-Limit-Remaining");
+                                    var reset = jqXHR.getResponseHeader("X-Rate-Limit-Reset");
+                                    var resultObj = { userId: userId, endpoint: url, status: jqXHR.status, statusText: jqXHR.statusText, success: false, response: jqXHR.responseJSON || jqXHR.responseText };
+
+                                    if (remaining && parseInt(remaining) < 10 && parseInt(remaining) >= 0) {
+                                        var resetTime = new Date(parseInt(reset) * 1000);
+                                        var waitTime = Math.max(0, resetTime - new Date());
+                                        $(results).find('p').first().html(
+                                            `Rate limit approaching (${remaining} remaining). Sleeping until ${resetTime.toLocaleTimeString()}...`
+                                        );
+                                        setTimeout(() => resolve(resultObj), waitTime);
+                                    } else {
+                                        resolve(resultObj);
+                                    }
+                                });
+                        });
+
+                        if (result.success) {
+                            successes.push(result);
+                        } else {
+                            failures.push(result);
+                        }
+                    } catch (err) {
+                        failures.push({ userId: userId, endpoint: url, status: 0, statusText: 'Network Error', success: false, response: err.message || 'Unknown error' });
+                    }
+                }
+
+                // Build results summary
+                var total = successes.length + failures.length;
+                var summaryHtml = `<br><h3>Results${cancel ? ' (Cancelled)' : ''}</h3>`;
+                summaryHtml += `<p><span style="color:green; font-weight:bold">${successes.length} succeeded</span>, ` +
+                    `<span style="color:red; font-weight:bold">${failures.length} failed</span> ` +
+                    `out of ${total} processed` + (cancel ? ` (${userIds.length} total)` : '') + `</p>`;
+
+                // Failures table
+                if (failures.length > 0) {
+                    summaryHtml += `<h4 style="color: #c62828">Failures</h4>`;
+                    summaryHtml += `<table style="border-collapse: collapse; width: 100%">` +
+                        `<tr><th style="border:1px solid #ddd; padding:4px; background:#f2f2f2; text-align:left">User ID</th>` +
+                        `<th style="border:1px solid #ddd; padding:4px; background:#f2f2f2; text-align:left">Endpoint</th>` +
+                        `<th style="border:1px solid #ddd; padding:4px; background:#f2f2f2; text-align:left">Status</th>` +
+                        `<th style="border:1px solid #ddd; padding:4px; background:#f2f2f2; text-align:left">Response</th></tr>`;
+                    for (var f of failures) {
+                        var responseSnippet = typeof f.response === 'object'
+                            ? e(JSON.stringify(f.response).substring(0, 200))
+                            : e(String(f.response).substring(0, 200));
+                        summaryHtml += `<tr style="background-color: #fff3f3">` +
+                            `<td style="border:1px solid #ddd; padding:4px; font-family:monospace">${e(f.userId)}</td>` +
+                            `<td style="border:1px solid #ddd; padding:4px; font-family:monospace; font-size:0.9em">${e(f.endpoint)}</td>` +
+                            `<td style="border:1px solid #ddd; padding:4px">${f.status} ${e(f.statusText)}</td>` +
+                            `<td style="border:1px solid #ddd; padding:4px">${responseSnippet}</td></tr>`;
+                    }
+                    summaryHtml += `</table>`;
+                }
+
+                // Successes table
+                if (successes.length > 0) {
+                    summaryHtml += `<h4 style="color: green">Successes</h4>`;
+                    summaryHtml += `<table style="border-collapse: collapse; width: 100%">` +
+                        `<tr><th style="border:1px solid #ddd; padding:4px; background:#f2f2f2; text-align:left">User ID</th>` +
+                        `<th style="border:1px solid #ddd; padding:4px; background:#f2f2f2; text-align:left">Endpoint</th>` +
+                        `<th style="border:1px solid #ddd; padding:4px; background:#f2f2f2; text-align:left">Status</th>` +
+                        `<th style="border:1px solid #ddd; padding:4px; background:#f2f2f2; text-align:left">Response</th></tr>`;
+                    for (var s of successes) {
+                        var responseSnippet = typeof s.response === 'object'
+                            ? e(JSON.stringify(s.response).substring(0, 200))
+                            : e(String(s.response || '').substring(0, 200));
+                        summaryHtml += `<tr>` +
+                            `<td style="border:1px solid #ddd; padding:4px; font-family:monospace">${e(s.userId)}</td>` +
+                            `<td style="border:1px solid #ddd; padding:4px; font-family:monospace; font-size:0.9em">${e(s.endpoint)}</td>` +
+                            `<td style="border:1px solid #ddd; padding:4px">${s.status} ${e(s.statusText)}</td>` +
+                            `<td style="border:1px solid #ddd; padding:4px">${responseSnippet}</td></tr>`;
+                    }
+                    summaryHtml += `</table>`;
+                }
+
+                $(results).html(summaryHtml);
+
+                // CSV download link
+                var allResults = failures.concat(successes);
+                var csvHeader = "userId,endpoint,status,statusText,result,response";
+                var csvLines = allResults.map(r => {
+                    var responseStr = typeof r.response === 'object' ? JSON.stringify(r.response) : String(r.response || '');
+                    return toCSV(r.userId, r.endpoint, r.status, r.statusText, r.success ? 'success' : 'fail', responseStr) + '\n';
+                });
+                var csvBlob = new Blob([csvHeader + '\n'].concat(csvLines), { type: 'text/csv' });
+                var date = (new Date()).toISOString().replace(/T/, " ").replace(/:/g, "-").slice(0, 19);
+                var csvLink = $(`<br><a>Download Results CSV</a>`).appendTo(results);
+                csvLink.attr("href", URL.createObjectURL(csvBlob));
+                csvLink.attr("download", `Bulk API Results ${date}.csv`);
+
+                return false;
             };
         });
     }
