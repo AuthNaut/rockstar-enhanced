@@ -2523,6 +2523,7 @@
                         You can paste logins from CSV, one per line, or comma-separated.<br>
                         Example: user1@example.com, user2@example.com, user3@example.com
                     </p>
+                    <label style='display:block; margin-top:8px;'><input type=checkbox id='includeFactorsEmail'> Include Factor Details</label>
                     <div id='emailError' style='color: #c62828; margin: 10px 0;'></div>
                     <button id='fetchUsersBtn' style='padding: 10px 20px; background: #667eea; color: white; border: none; border-radius: 4px; cursor: pointer;'>
                         Continue to Column Selection
@@ -2547,6 +2548,8 @@
                     $('#emailError').html('No valid email addresses found.');
                     return;
                 }
+                
+                var includeFactors = $('#includeFactorsEmail').is(':checked');
                 
                 // Show progress
                 emailListPopup.html(`
@@ -2589,7 +2592,17 @@
                         });
                         
                         if (result && result.length > 0) {
-                            users.push(result[0]);
+                            var foundUser = result[0];
+                            if (includeFactors) {
+                                emailListPopup.find('p').html(`Fetching factors for ${processed + 1} of ${emails.length}...`);
+                                try {
+                                    var factors = await getJSON(`/api/v1/users/${foundUser.id}/factors`);
+                                    foundUser._factors = factors;
+                                } catch (err) {
+                                    foundUser._factors = null;
+                                }
+                            }
+                            users.push(foundUser);
                         } else {
                             notFound.push(email);
                         }
@@ -2624,11 +2637,11 @@
                 summaryHtml += `</div>`;
                 
                 // Now show the column selection UI
-                exportUsersByEmailListColumns(users, summaryHtml);
+                exportUsersByEmailListColumns(users, summaryHtml, includeFactors);
             });
         }
         
-        function exportUsersByEmailListColumns(users, summaryHtml) {
+        function exportUsersByEmailListColumns(users, summaryHtml, includeFactors) {
             exportPopup = createPopup("Export Users by Login List");
             exportPopup.html(summaryHtml);
             exportPopup.append("<br>Columns to export");
@@ -2700,9 +2713,8 @@
                 errorBox.html('Unable to fetch custom attributes. Use an account with more privileges.<br>Only base attributes shown below.');
             });
 
-            exportPopup.append(`<br><label style='display:block; margin-top:8px;'><input type=checkbox id=includeFactorsEmail> Include Factor Details</label>`);
             exportPopup.append(`<br><div id=error>&nbsp;</div><br>`);
-            createDivA("Export", exportPopup, async function () {
+            createDivA("Export", exportPopup, function () {
                 var exportHeaders = [];
                 var exportCols = [];
                 checkboxDiv.find("input:checked").each(function () {
@@ -2711,32 +2723,28 @@
                 });
                 if (exportHeaders.length) {
                     $("#error").html("&nbsp;");
-                    var includeFactors = $("#includeFactorsEmail").is(":checked");
                     exportHeaders = exportHeaders.join(",");
                     if (includeFactors) {
                         exportHeaders += ",Factors Count,Factor Details";
                     }
                     localStorage.rockstarExportUserColumns = exportCols.join(",");
                     
-                    // Export the users we already fetched
+                    // Export the users we already fetched (factors already pre-fetched if requested)
                     exportPopup.html("Generating CSV...");
                     const lines = [];
-                    for (var i = 0; i < users.length; i++) {
-                        var user = users[i];
+                    users.forEach(user => {
                         var line = toCSV(...fields(user, exportCols));
                         if (includeFactors) {
-                            exportPopup.html(`Fetching factors... ${i + 1} of ${users.length}`);
-                            try {
-                                var factors = await getJSON(`/api/v1/users/${user.id}/factors`);
-                                var factorCount = factors.length;
-                                var factorDetails = factors.map(f => `${f.provider}:${f.factorType}(${f.status})`).join("; ");
+                            if (user._factors) {
+                                var factorCount = user._factors.length;
+                                var factorDetails = user._factors.map(f => `${f.provider}:${f.factorType}(${f.status})`).join("; ");
                                 line += "," + toCSV(factorCount, factorDetails);
-                            } catch (err) {
+                            } else {
                                 line += "," + toCSV(0, "Error fetching factors");
                             }
                         }
                         lines.push(line + '\n');
-                    }
+                    });
                     downloadCSV(exportPopup, `${users.length} user(s) exported. `, exportHeaders, lines, 'Export Users by Login List');
                 } else {
                     $("#error").html("ERROR: Select at least 1 column.");
