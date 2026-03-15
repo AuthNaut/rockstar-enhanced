@@ -2700,8 +2700,9 @@
                 errorBox.html('Unable to fetch custom attributes. Use an account with more privileges.<br>Only base attributes shown below.');
             });
 
-            exportPopup.append(`<br><br><div id=error>&nbsp;</div><br>`);
-            createDivA("Export", exportPopup, function () {
+            exportPopup.append(`<br><label style='display:block; margin-top:8px;'><input type=checkbox id=includeFactorsEmail> Include Factor Details</label>`);
+            exportPopup.append(`<br><div id=error>&nbsp;</div><br>`);
+            createDivA("Export", exportPopup, async function () {
                 var exportHeaders = [];
                 var exportCols = [];
                 checkboxDiv.find("input:checked").each(function () {
@@ -2710,16 +2711,32 @@
                 });
                 if (exportHeaders.length) {
                     $("#error").html("&nbsp;");
+                    var includeFactors = $("#includeFactorsEmail").is(":checked");
                     exportHeaders = exportHeaders.join(",");
+                    if (includeFactors) {
+                        exportHeaders += ",Factors Count,Factor Details";
+                    }
                     localStorage.rockstarExportUserColumns = exportCols.join(",");
                     
                     // Export the users we already fetched
                     exportPopup.html("Generating CSV...");
                     const lines = [];
-                    users.forEach(user => {
-                        const line = toCSV(...fields(user, exportCols));
+                    for (var i = 0; i < users.length; i++) {
+                        var user = users[i];
+                        var line = toCSV(...fields(user, exportCols));
+                        if (includeFactors) {
+                            exportPopup.html(`Fetching factors... ${i + 1} of ${users.length}`);
+                            try {
+                                var factors = await getJSON(`/api/v1/users/${user.id}/factors`);
+                                var factorCount = factors.length;
+                                var factorDetails = factors.map(f => `${f.provider}:${f.factorType}(${f.status})`).join("; ");
+                                line += "," + toCSV(factorCount, factorDetails);
+                            } catch (err) {
+                                line += "," + toCSV(0, "Error fetching factors");
+                            }
+                        }
                         lines.push(line + '\n');
-                    });
+                    }
                     downloadCSV(exportPopup, `${users.length} user(s) exported. `, exportHeaders, lines, 'Export Users by Login List');
                 } else {
                     $("#error").html("ERROR: Select at least 1 column.");
@@ -2813,7 +2830,8 @@
                     `Search lists all users; search by any user profile property, including custom-defined<br>` +
                     `properties, and id, status, created, activated, status changed and last updated.</form>`);
             }
-            exportPopup.append(`<br><br><div id=error>&nbsp;</div><br>`);
+            exportPopup.append(`<br><label style='display:block; margin-top:8px;'><input type=checkbox id=includeFactors> Include Factor Details</label>`);
+            exportPopup.append(`<br><div id=error>&nbsp;</div><br>`);
             createDivA("Export", exportPopup, function () {
                 var exportHeaders = [];
                 var exportColumns = [];
@@ -2823,7 +2841,11 @@
                 });
                 if (exportHeaders.length) {
                     $("#error").html("&nbsp;");
+                    var includeFactors = $("#includeFactors").is(":checked");
                     exportHeaders = exportHeaders.join(",");
+                    if (includeFactors) {
+                        exportHeaders += ",Factors Count,Factor Details";
+                    }
                     localStorage.rockstarExportUserColumns = exportColumns.join(",");
                     var localUrl = url; // Don't modify url!
                     if (filter) {
@@ -2832,7 +2854,22 @@
                         localStorage.rockstarExportUserArgs = exportArgs;
                         localUrl += '?' + exportArgs;
                     }
-                    startExport(o, localUrl, exportHeaders, user => toCSV(...fields(user, exportColumns)));
+                    if (includeFactors) {
+                        startExport(o, localUrl, exportHeaders, async user => {
+                            var line = toCSV(...fields(user, exportColumns));
+                            try {
+                                var factors = await getJSON(`/api/v1/users/${user.id}/factors`);
+                                var factorCount = factors.length;
+                                var factorDetails = factors.map(f => `${f.provider}:${f.factorType}(${f.status})`).join("; ");
+                                line += "," + toCSV(factorCount, factorDetails);
+                            } catch (err) {
+                                line += "," + toCSV(0, "Error fetching factors");
+                            }
+                            return line;
+                        });
+                    } else {
+                        startExport(o, localUrl, exportHeaders, user => toCSV(...fields(user, exportColumns)));
+                    }
                 } else {
                     $("#error").html("ERROR: Select at least 1 column.");
                 }

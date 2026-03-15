@@ -5,6 +5,8 @@ syslog_query.csv
 z_OLD_rockstar.js
 mobile.md
 .termdock/
+settings.local.json
+*.logs
 
 # Documentation files (keep only README.md)
 AUTO_POPULATE_FEATURE.md
